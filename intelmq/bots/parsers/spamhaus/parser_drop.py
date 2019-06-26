@@ -15,9 +15,9 @@ class SpamhausDropParserBot(ParserBot):
                          'https://www.spamhaus.org/drop/drop.lasso'}
 
     ASN_DROP_URLS = {'https://www.spamhaus.org/drop/asndrop.txt'}
+    lastgenerated = None
 
     def parse_line(self, line, report):
-        lastgenerated = None
 
         if line.startswith(';') or len(line) == 0:
             self.tempdata.append(line)
@@ -48,5 +48,6 @@ class SpamhausDropParserBot(ParserBot):
                 raise ValueError('Unknown data feed %s.' % report['feed.url'])
 
             yield event
+
 
 BOT = SpamhausDropParserBot

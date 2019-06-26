@@ -25,18 +25,27 @@ MULTILINE_REPORT = {"feed.name": "Test feed",
                     "__type": "Report",
                     }
 MULTILINE_EVENTS = [{"feed.name": "Test feed",
-                     "raw": 'eyJfX3R5cGUiOiAiRXZlbnQiLCAic291cmNlLmlwIjogIjEyNy4wLjAuMSIsICJjbGFzc2lmaWNhdGlvbi50eXBlIjogImMmYyJ9',
+                     "raw": 'eyJfX3R5cGUiOiAiRXZlbnQiLCAic291cmNlLmlwIjogIjEyNy4wLjAuMSIsICJjbGFzc2lmaWNhdGlvbi50eXBlIjogImMyc2VydmVyIn0=',
                      "__type": "Event",
-                     "classification.type": "c&c",
+                     "classification.type": "c2server",
                      "source.ip": "127.0.0.1"
                      },
                     {"feed.name": "Test feed",
-                     "raw": 'eyJfX3R5cGUiOiAiRXZlbnQiLCAic291cmNlLmlwIjogIjEyNy4wLjAuMiIsICJjbGFzc2lmaWNhdGlvbi50eXBlIjogImMmYyJ9',
+                     "raw": 'eyJfX3R5cGUiOiAiRXZlbnQiLCAic291cmNlLmlwIjogIjEyNy4wLjAuMiIsICJjbGFzc2lmaWNhdGlvbi50eXBlIjogImMyc2VydmVyIn0=',
                      "__type": "Event",
-                     "classification.type": "c&c",
+                     "classification.type": "c2server",
                      "source.ip": "127.0.0.2"
                      },
                     ]
+with open(os.path.join(os.path.dirname(__file__), 'data2.json'), 'rb') as fh:
+    RAW2 = base64.b64encode(fh.read()).decode()
+
+NO_DEFAULT_REPORT = {"feed.name": "Test feed",
+                     "raw": RAW2,
+                     "__type": "Report",
+                     }
+NO_DEFAULT_EVENT = MULTILINE_EVENTS[1].copy()
+NO_DEFAULT_EVENT['raw'] = 'eyJzb3VyY2UuaXAiOiAiMTI3LjAuMC4yIiwgImNsYXNzaWZpY2F0aW9uLnR5cGUiOiAiYzJzZXJ2ZXIifQo='
 
 
 class TestJSONParserBot(test.BotTestCase, unittest.TestCase):
@@ -61,6 +70,12 @@ class TestJSONParserBot(test.BotTestCase, unittest.TestCase):
         self.run_bot()
         self.assertMessageEqual(0, MULTILINE_EVENTS[0])
         self.assertMessageEqual(1, MULTILINE_EVENTS[1])
+
+    def test_default_event(self):
+        """ Test if correct Event has been produced. """
+        self.input_message = NO_DEFAULT_REPORT
+        self.run_bot()
+        self.assertMessageEqual(0, NO_DEFAULT_EVENT)
 
 
 if __name__ == '__main__':  # pragma: no cover

@@ -40,7 +40,7 @@ class TestDummyCollectorBot(test.BotTestCase, unittest.TestCase):
     def set_bot(cls):
         cls.bot_reference = DummyCollectorBot
         cls.default_input_message = None
-        cls.sysconfig = {'feed': 'Example Feed',
+        cls.sysconfig = {'name': 'Example Feed',
                          'code': 'Example Code',
                          'provider': 'Example Provider',
                          'documentation': 'Example Documentation',
@@ -53,8 +53,9 @@ class TestDummyCollectorBot(test.BotTestCase, unittest.TestCase):
         self.assertMessageEqual(0, EXAMPLE_REPORT)
 
     def test_missing_raw(self):
-        """ Test if correct Event has been produced. """
+        """ Test if missing raw is detected and ignored. """
         self.sysconfig['raw'] = False
+        self.allowed_warning_count = 1
         self.run_bot()
         self.assertAnyLoglineEqual(message='Ignoring report without raw field. '
                                            'Possible bug or misconfiguration of this bot.',

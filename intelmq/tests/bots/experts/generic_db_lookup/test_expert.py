@@ -1,14 +1,19 @@
 # -*- coding: utf-8 -*-
+import os
 import unittest
 
 import intelmq.lib.test as test
-import psycopg2
 from intelmq.bots.experts.generic_db_lookup.expert import \
     GenericDBLookupExpertBot
 
+
+if os.environ.get('INTELMQ_TEST_DATABASES'):
+    import psycopg2
+
+
 INPUT1 = {"__type": "Event",
           "classification.identifier": "zeus",
-          "classification.type": "botnet drone",
+          "classification.type": "infected-system",
           "source.asn": 64496,
           "source.ip": "192.0.2.1",
           "feed.name": "Example Feed",
@@ -50,6 +55,8 @@ class TestGenericDBLookupExpertBot(test.BotTestCase, unittest.TestCase):
                                             "contact": "source.abuse_contact",
                                             },
                          }
+        if not os.environ.get('INTELMQ_TEST_DATABASES'):
+            return
         cls.con = psycopg2.connect(database=cls.sysconfig['database'],
                                    user=cls.sysconfig['user'],
                                    password=cls.sysconfig['password'],
@@ -83,7 +90,7 @@ class TestGenericDBLookupExpertBot(test.BotTestCase, unittest.TestCase):
         self.sysconfig['match_fields'] = {"source.asn": "asn",
                                           "classification.type": "type"}
         self.cur.execute('''INSERT INTO lookuptests ("asn", "contact", "note", "type") VALUES
-        (64497, 'abuse@example.com', 'bar', 'botnet drone')
+        (64497, 'abuse@example.com', 'bar', 'infected-system')
         ''')
         self.input_message = INPUT3
         self.run_bot()
@@ -91,6 +98,8 @@ class TestGenericDBLookupExpertBot(test.BotTestCase, unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        if not os.environ.get('INTELMQ_TEST_DATABASES'):
+            return
         cls.cur.execute('DROP TABLE IF EXISTS "lookuptests"')
         cls.cur.close()
         cls.con.close()

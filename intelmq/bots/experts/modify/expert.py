@@ -40,11 +40,16 @@ class ModifyExpertBot(Bot):
         if type(self.config) is dict:
             self.config = convert_config(self.config)
 
+        if getattr(self.parameters, 'case_sensitive', True):
+            self.re_kwargs = {}
+        else:
+            self.re_kwargs = {'flags': re.IGNORECASE}
+
     def matches(self, identifier, event, condition):
         matches = {}
 
         for name, rule in condition.items():
-            # empty string means non-existant field
+            # empty string means non-existent field
             if rule == '':
                 if name in event:
                     return None
@@ -54,20 +59,20 @@ class ModifyExpertBot(Bot):
                 return None
             if not isinstance(rule, type(event[name])):
                 if isinstance(rule, str) and isinstance(event[name], (int, float)):
-                    match = re.search(rule, str(event[name]))
+                    match = re.search(rule, str(event[name]), **self.re_kwargs)
                     if match is None:
                         return None
                     else:
                         matches[name] = match
                 else:
-                    self.logger.warn("Type of rule ({!r}) and data ({!r}) do not "
-                                     "match in {!s}, {}!".format(type(rule), type(event[name]),
-                                                                 identifier, name))
+                    self.logger.warn("Type of rule (%r) and data (%r) do not "
+                                     "match in %s, %s!",
+                                     type(rule), type(event[name]), identifier, name)
             elif not isinstance(event[name], str):  # int, float, etc
                 if event[name] != rule:
                     return None
             else:
-                match = re.search(rule, event[name])
+                match = re.search(rule, event[name], **self.re_kwargs)
                 if match is None:
                     return None
                 else:
@@ -89,7 +94,7 @@ class ModifyExpertBot(Bot):
             rule_id, rule_selection, rule_action = rule['rulename'], rule['if'], rule['then']
             matches = self.matches(rule_id, event, rule_selection)
             if matches is not None:
-                self.logger.debug('Apply rule {}.'.format(rule_id))
+                self.logger.debug('Apply rule %s.', rule_id)
                 self.apply_action(event, rule_action, matches)
 
         self.send_message(event)

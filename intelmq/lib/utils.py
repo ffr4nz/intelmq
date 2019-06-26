@@ -12,23 +12,30 @@ reverse_readline
 parse_logline
 """
 import base64
-import dateutil.parser
+import collections
+import grp
+import gzip
+import io
 import json
 import logging
 import logging.handlers
 import os
+import pwd
 import re
 import sys
+import tarfile
 import traceback
+from typing import Generator, Iterator, Optional, Sequence, Union
 
-from typing import Sequence, Union
+import dateutil.parser
+from dateutil.relativedelta import relativedelta
 
 import intelmq
-import pytz
 
 __all__ = ['base64_decode', 'base64_encode', 'decode', 'encode',
            'load_configuration', 'load_parameters', 'log', 'parse_logline',
-           'reverse_readline', 'error_message_from_exc', 'parse_relative'
+           'reverse_readline', 'error_message_from_exc', 'parse_relative',
+           'RewindableFileHandle',
            ]
 
 # Used loglines format
@@ -38,19 +45,19 @@ LOG_FORMAT_SYSLOG = '%(name)s: %(levelname)s %(message)s'
 
 # Regex for parsing the above LOG_FORMAT
 LOG_REGEX = (r'^(?P<date>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+) -'
-             r' (?P<bot_id>[-\w]+) - '
+             r' (?P<bot_id>([-\w]+|py\.warnings)) - '
              r'(?P<log_level>[A-Z]+) - '
              r'(?P<message>.+)$')
-SYSLOG_REGEX = ('^(?P<date>\w{3} \d{2} \d{2}:\d{2}:\d{2}) (?P<hostname>[-\.\w]+) '
-                '(?P<bot_id>[-\w]+): (?P<log_level>[A-Z]+) (?P<message>.+)$')
+SYSLOG_REGEX = (r'^(?P<date>\w{3} \d{2} \d{2}:\d{2}:\d{2}) (?P<hostname>[-\.\w]+) '
+                r'(?P<bot_id>([-\w]+|py\.warnings)): (?P<log_level>[A-Z]+) (?P<message>.+)$')
 
 
 class Parameters(object):
     pass
 
 
-def decode(text: Union[bytes, str], encodings: Sequence[str]=("utf-8", ),
-           force: bool=False) -> str:
+def decode(text: Union[bytes, str], encodings: Sequence[str] = ("utf-8",),
+           force: bool = False) -> str:
     """
     Decode given string to UTF-8 (default).
 
@@ -85,8 +92,8 @@ def decode(text: Union[bytes, str], encodings: Sequence[str]=("utf-8", ),
                      ".".format(encodings))
 
 
-def encode(text: Union[bytes, str], encodings: Sequence[str]=("utf-8", ),
-           force: bool=False) -> str:
+def encode(text: Union[bytes, str], encodings: Sequence[str] = ("utf-8",),
+           force: bool = False) -> bytes:
     """
     Encode given string from UTF-8 (default).
 
@@ -147,6 +154,21 @@ def base64_encode(value: Union[bytes, str]) -> str:
         Possible bytes - unicode conversions problems are ignored.
     """
     return decode(base64.b64encode(encode(value, force=True)), force=True)
+
+
+def flatten_queues(queues) -> Iterator[str]:
+    """
+    Assure that output value will be a flattened.
+
+    Parameters:
+        queues: either list [...] or object that contain values of strings and lists {"": str, "": list}.
+            As used in the pipeline configuration.
+
+    Returns:
+        flattened_queues: queues without dictionaries as values, just lists with the values
+    """
+    return (item for sublist in (queues.values() if type(queues) is dict else queues) for item in
+            (sublist if type(sublist) is list else [sublist]))
 
 
 def load_configuration(configuration_filepath: str) -> dict:
@@ -213,10 +235,23 @@ class StreamHandler(logging.StreamHandler):
             self.handleError(record)
 
 
-def log(name: str, log_path: str=intelmq.DEFAULT_LOGGING_PATH, log_level: str="DEBUG",
-        stream: Union[None, object]=None, syslog: Union[bool, str, list, tuple]=None):
+class ListHandler(logging.StreamHandler):
+    """
+    Logging handler which saves the messages in a list which can be accessed with the
+    `buffer` attribute.
+    """
+    buffer = []  # type: list
+
+    def emit(self, record):
+        self.buffer.append((record.levelname.lower(), record.getMessage()))
+
+
+def log(name: str, log_path: Union[str, bool] = intelmq.DEFAULT_LOGGING_PATH, log_level: str = "DEBUG",
+        stream: Optional[object] = None, syslog: Union[bool, str, list, tuple] = None,
+        log_format_stream: str = LOG_FORMAT_STREAM):
     """
     Returns a logger instance logging to file and sys.stderr or other stream.
+    The warnings module will log to the same handlers.
 
     Parameters:
         name: filename for logfile or string preceding lines in stream
@@ -229,6 +264,8 @@ def log(name: str, log_path: str=intelmq.DEFAULT_LOGGING_PATH, log_level: str="D
             If False (default), FileHandler will be used. Otherwise either a list/
             tuple with address and UDP port are expected, e.g. `["localhost", 514]`
             or a string with device name, e.g. `"/dev/log"`.
+        log_format_stream:
+            The log format used for streaming output. Default: LOG_FORMAT_STREAM
 
     Returns:
         logger: An instance of logging.Logger
@@ -238,6 +275,11 @@ def log(name: str, log_path: str=intelmq.DEFAULT_LOGGING_PATH, log_level: str="D
         LOG_FORMAT_STREAM: Default log format for stream handler
         LOG_FORMAT_SYSLOG: Default log format for syslog
     """
+    logging.captureWarnings(True)
+    warnings_logger = logging.getLogger("py.warnings")
+    # set the name of the warnings logger to the bot neme, see #1184
+    warnings_logger.name = name
+
     logger = logging.getLogger(name)
     logger.setLevel(log_level)
 
@@ -252,24 +294,28 @@ def log(name: str, log_path: str=intelmq.DEFAULT_LOGGING_PATH, log_level: str="D
             handler = logging.handlers.SysLogHandler(address=syslog)
         handler.setLevel(log_level)
         handler.setFormatter(logging.Formatter(LOG_FORMAT_SYSLOG))
+    else:
+        raise ValueError("Invalid configuration, neither log_path is given nor syslog is used.")
 
     if log_path or syslog:
         logger.addHandler(handler)
+        warnings_logger.addHandler(handler)
 
     if stream or stream is None:
-        console_formatter = logging.Formatter(LOG_FORMAT_STREAM)
+        console_formatter = logging.Formatter(log_format_stream)
         if stream is None:
             console_handler = StreamHandler()
         else:
             console_handler = logging.StreamHandler(stream)
         console_handler.setFormatter(console_formatter)
         logger.addHandler(console_handler)
+        warnings_logger.addHandler(console_handler)
         console_handler.setLevel(log_level)
 
     return logger
 
 
-def reverse_readline(filename: str, buf_size=100000) -> str:
+def reverse_readline(filename: str, buf_size=100000) -> Generator[str, None, None]:
     """
     See also:
         https://github.com/certtools/intelmq/issues/393#issuecomment-154041996
@@ -297,7 +343,7 @@ def reverse_readline(filename: str, buf_size=100000) -> str:
         yield line[::-1]
 
 
-def parse_logline(logline: str, regex: str=LOG_REGEX) -> dict:
+def parse_logline(logline: str, regex: str = LOG_REGEX) -> Union[dict, str]:
     """
     Parses the given logline string into its components.
 
@@ -307,10 +353,11 @@ def parse_logline(logline: str, regex: str=LOG_REGEX) -> dict:
 
     Returns:
         result: dictionary with keys: ['date', 'bot_id', 'log_level', 'message']
+            or string if the line can't be parsed
 
     See also:
-        LOG_REGEX: Regular expressen for default log format of file handler
-        SYSLOG_REGEX: Regular expressen for log format of syslog
+        LOG_REGEX: Regular expression for default log format of file handler
+        SYSLOG_REGEX: Regular expression for log format of syslog
     """
 
     match = re.match(regex, logline)
@@ -319,10 +366,6 @@ def parse_logline(logline: str, regex: str=LOG_REGEX) -> dict:
     try:
         value = dict(list(zip(fields, match.group(*fields))))
         date = dateutil.parser.parse(value['date'])
-        try:
-            date = date.astimezone(pytz.utc)
-        except ValueError:  # astimezone() cannot be applied to a naive datetime
-            pass
         value['date'] = date.isoformat()
         if value['date'].endswith('+00:00'):
             value['date'] = value['date'][:-6]
@@ -371,7 +414,7 @@ def parse_relative(relative_time: str) -> int:
         TIMESPANS: Defines the conversion of verbal timespans to minutes
     """
     try:
-        result = re.findall(r'^(\d+)\s+(\w+[^s])s?$', relative_time, re.UNICODE)
+        result = re.findall(r'^(\d+)\s+(\w+[^s])s?$', relative_time.strip(), re.UNICODE)
     except ValueError as e:
         raise ValueError("Could not apply regex to attribute \"%s\" with exception %s.",
                          repr(relative_time), repr(e.args))
@@ -379,3 +422,121 @@ def parse_relative(relative_time: str) -> int:
         return int(result[0][0]) * TIMESPANS[result[0][1]]
     else:
         raise ValueError("Could not process result of regex for attribute " + repr(relative_time))
+
+
+def unzip(file: bytes, extract_files: Union[bool, list], logger=None, try_gzip: bool = True) -> list:
+    """
+        Extracts given compressed (tar.)gz file and returns content of specified or all files from it.
+        Handles tarfiles, compressed tarfiles and gzipped files.
+
+        First the function tries to handle the file with the tarfile library which handles
+        compressed archives too.
+        Second, it tries to uncompress the file with gzip.
+
+        Parameters:
+            file: a binary representation of compressed file
+            extract_files: a value which specifies files to be extracted:
+                    True: all
+                    list: some
+            try_gzip: Try to gzip-uncompress the file.
+
+        Returns:
+            result: list containing the string representation of specified files
+
+        Raises:
+            TypeError: If file isn't tar.gz
+    """
+    try:
+        tar = tarfile.open(fileobj=io.BytesIO(file))
+        if logger:
+            logger.debug('Detected tarfile.')
+    except tarfile.TarError as te:
+        try:
+            if not try_gzip:
+                raise OSError
+            if logger:
+                logger.debug('Detected gzipped file.')
+            data = gzip.decompress(file)
+        except OSError:
+            raise TypeError("Could not process given file" + repr(te.args))
+        else:
+            return [data]
+    else:
+        if isinstance(extract_files, bool):
+            extract_files = [file.name for file in tar.getmembers()]
+
+        return [tar.extractfile(member).read() for member in tar.getmembers() if member.name in extract_files]
+
+
+class RewindableFileHandle(object):
+    """
+    Can be used for easy retrieval of last input line to populate raw field
+    during CSV parsing.
+    """
+
+    def __init__(self, f):
+        self.f = f
+        self.current_line = None
+        self.first_line = None
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.current_line = next(self.f)
+        if self.first_line is None:
+            self.first_line = self.current_line
+        return self.current_line
+
+
+def object_pair_hook_bots(*args, **kwargs):
+    """
+    A object_pair_hook function for the BOTS file to be used in the json's dump functions.
+
+    Usage: BOTS = json.loads(raw, object_pairs_hook=object_pair_hook_bots)
+
+    """
+    # Do not sort collector bots
+    if len(args[0]) and len(args[0][0]) == 2 and isinstance(args[0][0][1], dict) and\
+            'module' in args[0][0][1] and '.collectors' in args[0][0][1]['module']:
+        return collections.OrderedDict(*args, **kwargs)
+    # Do not sort bot groups
+    if len(args[0]) and len(args[0][0]) and len(args[0][0][0]) and args[0][0][0] == 'Collector':
+        return collections.OrderedDict(*args, **kwargs)
+    return dict(sorted(*args), **kwargs)
+
+
+def seconds_to_human(seconds: int, precision: int = 0) -> str:
+    """
+    Converts second count to a human readable description.
+    >>> seconds_to_human(60)
+    "1m"
+    >>> seconds_to_human(3600)
+    "1h"
+    >>> seconds_to_human(3601)
+    "1h 0m 1s"
+    """
+    relative = relativedelta(seconds=seconds)
+    result = []
+    for frame in ('days', 'hours', 'minutes', 'seconds'):
+        if getattr(relative, frame):
+            result.append('%.{}f%s'.format(precision) % (getattr(relative, frame), frame[0]))
+    return ' '.join(result)
+
+
+def drop_privileges() -> bool:
+    """
+    Checks if the current user is root. If yes, it tries to change to intelmq user and group.
+
+    returns:
+        success: If the drop of privileges did work
+    """
+    if os.geteuid() == 0:
+        try:
+            os.setgid(grp.getgrnam('intelmq').gr_gid)
+            os.setuid(pwd.getpwnam('intelmq').pw_uid)
+        except OSError:
+            return False
+    if os.geteuid() != 0:  # For the unprobably possibility that intelmq is root
+        return True
+    return False

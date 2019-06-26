@@ -8,59 +8,60 @@ import json
 
 from intelmq.lib import utils
 from intelmq.lib.bot import Bot
+from intelmq.lib.harmonization import DateTime
 
 __all__ = ['N6StompParserBot']
-mapping = dict()
-mapping['amplifier']    = {"taxonomy": "Vulnerable",
+mapping = {}
+mapping['amplifier']    = {"taxonomy": "vulnerable",
                            "type": "vulnerable service",
                            "identifier": "amplifier"}
-mapping['bots']         = {"taxonomy": "Malicious Code",
-                           "type": "botnet drone", "identifier": "generic-n6-drone"}
-mapping['backdoor']     = {"taxonomy": "Intrusions",
+mapping['bots']         = {"taxonomy": "malicious code",
+                           "type": "infected-system", "identifier": "generic-n6-drone"}
+mapping['backdoor']     = {"taxonomy": "intrusions",
                            "type": "backdoor", "identifier": "hacked server"}
-mapping['cnc']          = {"taxonomy": "Malicious Code",
-                           "type": "c&c", "identifier": "c&c server"}
-mapping['dns-query']    = {"taxonomy": "Other",
-                           "type": "other", "identifier": "ignore me"}
-mapping['dos-attacker'] = {"taxonomy": "Availability",
+mapping['cnc']          = {"taxonomy": "malicious code",
+                           "type": "c2server", "identifier": "c&c server"}
+mapping['dns-query']    = {"taxonomy": "other",
+                           "type": "other", "identifier": "dns-query"}
+mapping['dos-attacker'] = {"taxonomy": "availability",
                            "type": "ddos", "identifier": "dos-attacker"}
-mapping['dos-victim']   = {"taxonomy": "Availability",
+mapping['dos-victim']   = {"taxonomy": "availability",
                            "type": "ddos", "identifier": "dos-victim"}
-mapping['flow']         = {"taxonomy": "Other", "type": "other",
+mapping['flow']         = {"taxonomy": "other", "type": "other",
                            "identifier": "flow"}
-mapping['flow-anomaly'] = {"taxonomy": "Other",
+mapping['flow-anomaly'] = {"taxonomy": "other",
                            "type": "other", "identifier": "flow-anomaly"}
-mapping['fraud']        = {"taxonomy": "Fraud",
+mapping['fraud']        = {"taxonomy": "fraud",
                            "type": "account numbers", "identifier": "fraud"}
-mapping['leak']         = {"taxonomy": "Information Content Security",
+mapping['leak']         = {"taxonomy": "information content security",
                            "type": "leak", "identifier": "leak"}
-mapping['malurl']       = {"taxonomy": "Malicious Code",
+mapping['malurl']       = {"taxonomy": "malicious code",
                            "type": "exploit", "identifier": "malurl"}
-mapping['malware-action'] = {"taxonomy": "Malicious Code",
-                             "type": "malware configuration",
-                             "identifier": "malware configuration"}
-mapping['phish']        = {"taxonomy": "Fraud",
+mapping['malware-action'] = {"taxonomy": "malicious code",
+                             "type": "malware-configuration",
+                             "identifier": "malware-configuration"}
+mapping['phish']        = {"taxonomy": "fraud",
                            "type": "phishing", "identifier": "phishing"}
-mapping['proxy']        = {"taxonomy": "Vulnerable",
-                           "type": "proxy", "identifier": "open proxy"}
-mapping['sandbox-url']  = {"taxonomy": "ignore",
-                           "type": "ignore", "identifier": "ignore me"}
-mapping['scanning']     = {"taxonomy": "Information Gathering",
+mapping['proxy']        = {"taxonomy": "other",
+                           "type": "proxy", "identifier": "openproxy"}
+mapping['sandbox-url']  = {"taxonomy": "malicious code",
+                           "type": "malware", "identifier": "sandboxurl"}
+mapping['scanning']     = {"taxonomy": "information gathering",
                            "type": "scanner", "identifier": "scanning"}
-mapping['server-exploit'] = {"taxonomy": "Malicious Code",
+mapping['server-exploit'] = {"taxonomy": "malicious code",
                              "type": "exploit", "identifier": "server-exploit"}
-mapping['spam']         = {"taxonomy": "Abusive Content",
+mapping['spam']         = {"taxonomy": "abusive content",
                            "type": "spam", "identifier": "spam"}
-mapping['spam-url']     = {"taxonomy": "Abusive Content",
+mapping['spam-url']     = {"taxonomy": "abusive content",
                            "type": "spam", "identifier": "spam-url"}
-mapping['tor']          = {"taxonomy": "Other",
+mapping['tor']          = {"taxonomy": "other",
                            "type": "tor", "identifier": "tor exit node"}
-mapping['webinject']    = {"taxonomy": "Malicious Code",
+mapping['webinject']    = {"taxonomy": "malicious code",
                            "type": "malware", "identifier": "malware"}
-mapping['vulnerable']   = {"taxonomy": "Vulnerable",
+mapping['vulnerable']   = {"taxonomy": "vulnerable",
                            "type": "other", "identifier": "vulnerable"}
-mapping['other']        = {"taxonomy": "Vulnerable",
-                           "type": "unknown", "identifier": "unknown"}
+mapping['other']        = {"taxonomy": "other",
+                           "type": "other", "identifier": "other"}
 
 
 class N6StompParserBot(Bot):
@@ -69,7 +70,7 @@ class N6StompParserBot(Bot):
         report = self.receive_message()
 
         peek = utils.base64_decode(report.get("raw"))
-        self.logger.debug("Peeking at event '%s'." % peek)
+        self.logger.debug("Peeking at event %r.", peek)
         if "TEST MESSAGE" in peek:
             self.logger.debug("Ignoring test message/event.")
             self.acknowledge_message()
@@ -80,7 +81,6 @@ class N6StompParserBot(Bot):
         dict_report = json.loads(peek)
 
         event.add("raw", report.get("raw"), sanitize=False)
-        extra = {}
         if "time" in dict_report:
             event.add("time.source", dict_report["time"])
         if "dip" in dict_report:
@@ -97,15 +97,21 @@ class N6StompParserBot(Bot):
             else:
                 event.add("source.fqdn", dict_report["fqdn"])
         if "id" in dict_report:
-            extra['feed_id'] = dict_report["id"]
+            event["extra.feed_id"] = dict_report["id"]
         if "adip" in dict_report:
-            extra["adip"] = dict_report["adip"]
+            event["extra.adip"] = dict_report["adip"]
         if "proto" in dict_report:
             event.add("protocol.transport", dict_report["proto"])
         if "sport" in dict_report:
             event.add("source.port", dict_report["sport"])
         if "url" in dict_report:
             event.add("source.url", dict_report["url"])
+        if "confidence" in dict_report:
+            event.add("extra.confidence", dict_report["confidence"])
+        if "expires" in dict_report:
+            event.add("extra.expires", DateTime.sanitize(dict_report["expires"]))
+        if "source" in dict_report:
+            event.add("extra.feed_source", dict_report["source"])
         if ("category" in dict_report and "name" in dict_report and
                 dict_report["category"] == 'bots'):
             event.add("malware.name", dict_report["name"])
@@ -115,7 +121,10 @@ class N6StompParserBot(Bot):
         else:
             mapping['bots']['identifier'] = "generic-n6-drone"
 
-        if dict_report["category"] is not None:
+        if dict_report["type"] == "bl-update":
+            event.add("classification.taxonomy", "other")
+            event.add("classification.type", "blacklist")
+        elif dict_report["category"] is not None:
             event.add("classification.taxonomy",
                       mapping[dict_report["category"]]["taxonomy"],
                       overwrite=True)
@@ -126,32 +135,21 @@ class N6StompParserBot(Bot):
                       mapping[dict_report["category"]]["identifier"],
                       overwrite=True)
 
-        if extra:
-            event.add("extra", extra)
-
-        # address is an array of JSON objects -> split the event
-        if (not ("address" in dict_report or "fqdn" in dict_report)):
-            # neither of them present -> currently we can't handle those
-            self.logger.warn("ignoring event that we can't handle: "
-                             "neither an address nor an fqdn given")
-        elif ("fqdn" in dict_report):
-            # need to handle domain based data later (for example via gethostbyname bot)
+        # split up the event into multiple ones, one for each address
+        for addr in dict_report.get('address', []):
             ev = self.new_event(event)
+            ev.add("source.ip", addr["ip"])
+            if ("asn" in addr):
+                ev.add("source.asn", addr["asn"])
+            if ("rdns" in addr):
+                ev.add("source.reverse_dns", addr["rdns"])
+            # XXX ignore for now, only relevant for flows
+            # ev.add("source.dir", addr["dir"])
+            if ("cc" in addr):
+                ev.add("source.geolocation.cc", addr["cc"])
             self.send_message(ev)
-        else:
-            # split up the event into multiple ones, one for each address
-            for addr in dict_report['address']:
-                ev = self.new_event(event)
-                ev.add("source.ip", addr["ip"])
-                if ("asn" in addr):
-                    ev.add("source.asn", addr["asn"])
-                if ("rdns" in addr):
-                    ev.add("source.reverse_dns", addr["rdns"])
-                # XXX ignore for now, only relevant for flows
-                # ev.add("source.dir", addr["dir"])
-                if ("cc" in addr):
-                    ev.add("source.geolocation.cc", addr["cc"])
-                self.send_message(ev)
+        else:  # no address
+            self.send_message(event)
 
         self.acknowledge_message()
 

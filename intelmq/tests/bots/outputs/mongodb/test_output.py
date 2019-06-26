@@ -1,20 +1,22 @@
 # -*- coding: utf-8 -*-
+import os
 import unittest
-
-import pymongo
 
 import intelmq.lib.test as test
 from intelmq.bots.outputs.mongodb.output import MongoDBOutputBot
 
+if os.environ.get('INTELMQ_TEST_DATABASES'):
+    import pymongo
+
 INPUT1 = {"__type": "Event",
-          "classification.type": "botnet drone",
+          "classification.type": "infected-system",
           "source.asn": 64496,
           "source.ip": "192.0.2.1",
           "feed.name": "Example Feed",
           "extra": '{"foo.bar": "test"}'
           }
-OUTPUT1 = {'classification': {'type': 'botnet drone'},
-           'extra': '{"foo.bar": "test"}',
+OUTPUT1 = {'classification': {'type': 'infected-system'},
+           'extra': {"foo": {"bar": "test"}},
            'feed': {'name': 'Example Feed'},
            'source': {'asn': 64496, 'ip': '192.0.2.1'},
            }
@@ -32,6 +34,8 @@ class TestMongoDBOutputBot(test.BotTestCase, unittest.TestCase):
                          "host": "localhost",
                          "port": 27017,
                          "hierarchical_output": True}
+        if not os.environ.get('INTELMQ_TEST_DATABASES'):
+            return
         cls.con = pymongo.MongoClient()
         cls.db = cls.con['tests']
 

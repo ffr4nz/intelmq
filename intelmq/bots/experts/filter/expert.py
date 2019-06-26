@@ -12,18 +12,19 @@ from intelmq.lib.utils import parse_relative
 
 class FilterExpertBot(Bot):
 
+    _message_processed_verb = 'Forwarded'
+
     # decide format of timefilter value and parse it
     def parse_timeattr(self, time_attr):
         try:
             absolute = parser.parse(time_attr)
         except ValueError:
             relative = timedelta(minutes=parse_relative(time_attr))
-            self.logger.info("Filtering out events to (relative time) {!r}.".format(relative))
+            self.logger.info("Filtering out events to (relative time) %r.", relative)
             return relative
         else:
-            self.logger.info("Filtering out events to (absolute time) {!r}.".format(absolute))
+            self.logger.info("Filtering out events to (absolute time) %r.", absolute)
             return absolute
-        return None
 
     def init(self):
         self.not_after = None
@@ -50,49 +51,59 @@ class FilterExpertBot(Bot):
             self.logger.info("Filter_action parameter definition unknown.")
             self.filter = False
 
-        self.use_regex = False
+        self.regex = False
         if hasattr(self.parameters, 'filter_regex') and self.parameters.filter_regex:
-            self.use_regex = True
+            self.regex = re.compile(self.parameters.filter_value)
 
-        if not (self.filter or self.not_after is not None or self.not_before is not None):
+        self.time_filter = self.not_after is not None or self.not_before is not None
+
+        if not (self.filter or self.time_filter):
             raise ValueError("No relevant filter configuration found.")
 
     def process(self):
         event = self.receive_message()
 
         # time based filtering
-        if 'time.source' in event:
+        if self.time_filter and 'time.source' in event:
             try:
                 event_time = parser.parse(str(event.get('time.source'))).replace(tzinfo=pytz.timezone('UTC'))
             except ValueError:
-                self.logger.error("Could not parse time.source {!s}.".format(event.get('time.source')))
+                self.logger.error("Could not parse time.source %s.", event.get('time.source'))
             else:
                 if type(self.not_after) is datetime and event_time > self.not_after:
                     self.acknowledge_message()
-                    self.logger.debug("Filtered out event with time.source {!s}.".format(event.get('time.source')))
+                    self.logger.debug("Filtered out event with time.source %s.", event.get('time.source'))
                     return
                 if type(self.not_before) is datetime and event_time < self.not_before:
                     self.acknowledge_message()
-                    self.logger.debug("Filtered out event with time.source {!r}.".format(event.get('time.source')))
+                    self.logger.debug("Filtered out event with time.source %r.", event.get('time.source'))
                     return
 
                 now = datetime.now(tz=pytz.timezone('UTC'))
                 if type(self.not_after) is timedelta and event_time > (now - self.not_after):
                     self.acknowledge_message()
-                    self.logger.debug("Filtered out event with time.source {!r}.".format(event.get('time.source')))
+                    self.logger.debug("Filtered out event with time.source %r.", event.get('time.source'))
                     return
                 if type(self.not_before) is timedelta and event_time < (now - self.not_before):
                     self.acknowledge_message()
-                    self.logger.debug("Filtered out event with time.source {!r}.".format(event.get('time.source')))
+                    self.logger.debug("Filtered out event with time.source %r.", event.get('time.source'))
                     return
 
         # key/value based filtering
         if self.filter and self.parameters.filter_action == "drop":
             if self.doFilter(event, self.parameters.filter_key,
                              self.parameters.filter_value):
+                # action == drop, filter matches
+                self.send_message(event, path='action_other',
+                                  path_permissive=True)
+                self.send_message(event, path='filter_match',
+                                  path_permissive=True)
                 self.acknowledge_message()
                 return
             else:
+                # action == drop, filter not matches
+                self.send_message(event, path='filter_no_match',
+                                  path_permissive=True)
                 self.send_message(event)
                 self.acknowledge_message()
                 return
@@ -100,10 +111,18 @@ class FilterExpertBot(Bot):
         if self.filter and self.parameters.filter_action == "keep":
             if self.doFilter(event, self.parameters.filter_key,
                              self.parameters.filter_value):
+                # action == keep, filter matches
+                self.send_message(event, path='filter_match',
+                                  path_permissive=True)
                 self.send_message(event)
                 self.acknowledge_message()
                 return
             else:
+                # action == keep, filter not matches
+                self.send_message(event, path='action_other',
+                                  path_permissive=True)
+                self.send_message(event, path='filter_no_match',
+                                  path_permissive=True)
                 self.acknowledge_message()
                 return
 
@@ -111,8 +130,8 @@ class FilterExpertBot(Bot):
         self.acknowledge_message()
 
     def doFilter(self, event, key, condition):
-        if self.use_regex:
-            return self.regexSearchFilter(event, key, condition)
+        if self.regex:
+            return self.regexSearchFilter(event, key)
         else:
             return self.equalsFilter(event, key, condition)
 
@@ -120,10 +139,9 @@ class FilterExpertBot(Bot):
         return (key in event and
                 event.get(key) == value)
 
-    def regexSearchFilter(self, event, key, regex):
+    def regexSearchFilter(self, event, key):
         if key in event:
-            exp = re.compile(regex)
-            return exp.search(str(event.get(key)))
+            return self.regex.search(str(event.get(key)))
         else:
             return False
 

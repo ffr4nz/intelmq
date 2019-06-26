@@ -11,7 +11,7 @@ class Netlab360ParserBot(ParserBot):
     MIRAI_SCANNER_FEED = {'http://data.netlab.360.com/feeds/mirai-scanner/scanner.list'}
 
     def parse_line(self, line, report):
-        if line.startswith('#') or len(line) == 0:
+        if line.startswith('#') or not line.strip():
             self.tempdata.append(line)
 
         else:
@@ -22,8 +22,13 @@ class Netlab360ParserBot(ParserBot):
 
             if report['feed.url'] in Netlab360ParserBot.DGA_FEED:
                 event.add('source.fqdn', value[1])
-                event.add('time.source', value[3] + ' UTC')
-                event.add('classification.type', 'c&c')
+                # DGA Feed format is
+                # DGA family, Domian, Start and end of valid time(UTC)
+
+                event.add('time.source', value[2] + ' UTC')
+                if event['time.source'] > event['time.observation']:
+                    event.change('time.source', event['time.observation'])
+                event.add('classification.type', 'c2server')
                 event.add('event_description.url', 'http://data.netlab.360.com/dga')
 
             elif report['feed.url'] in Netlab360ParserBot.MAGNITUDE_FEED:
@@ -45,5 +50,6 @@ class Netlab360ParserBot(ParserBot):
                 raise ValueError('Unknown data feed %s.' % report['feed.url'])
 
             yield event
+
 
 BOT = Netlab360ParserBot

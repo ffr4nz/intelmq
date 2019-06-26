@@ -6,7 +6,9 @@ import intelmq.lib.utils as utils
 from intelmq.lib.bot import Bot
 
 
-class UDPBot(Bot):
+class UDPOutputBot(Bot):
+
+    is_multithreadable = False
 
     def init(self):
         self.delimiter = self.parameters.field_delimiter
@@ -17,8 +19,7 @@ class UDPBot(Bot):
         self.keep_raw_field = bool(self.parameters.keep_raw_field)
         self.format = self.parameters.format.lower()
         if self.format not in ['json', 'delimited']:
-            self.logger.error('Unknown format %r given. Check your configuration.' % self.format)
-            self.stop()
+            raise ValueError('Unknown format %r given. Check your configuration.' % self.format)
 
     def process(self):
         event = self.receive_message()
@@ -45,11 +46,11 @@ class UDPBot(Bot):
         data = utils.encode(self.remove_control_char(rawdata) + '\n')
         try:
             self.udp.sendto(data, self.upd_address)
-        except:
-            self.logger.exception('Failled to sent message to {}:{} !'
-                                  .format(self.udp_host, self.udp_port))
+        except Exception:
+            self.logger.exception('Failed to send message to %s:%s!',
+                                  self.udp_host, self.udp_port)
         else:
             self.acknowledge_message()
 
 
-BOT = UDPBot
+BOT = UDPOutputBot

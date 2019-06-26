@@ -18,8 +18,7 @@ class StompOutputBot(Bot):
 
     def init(self):
         if stomp is None:
-            self.logger.error('Could not import stomp. Please install it.')
-            self.stop()
+            raise ValueError('Could not import stomp. Please install it.')
 
         self.server = getattr(self.parameters, 'server', '127.0.0.1')
         self.port = getattr(self.parameters, 'port', 61614)
@@ -54,7 +53,7 @@ class StompOutputBot(Bot):
         self.conn.start()
         self.conn.connect(wait=False)
 
-    def shtudown(self):
+    def shutdown(self):
         self.conn.disconnect()
 
     def process(self):

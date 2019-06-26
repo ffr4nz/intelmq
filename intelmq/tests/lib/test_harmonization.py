@@ -123,6 +123,7 @@ class TestHarmonization(unittest.TestCase):
 
     def test_ipaddress_sanitize(self):
         """ Test IPAddress.is_valid and sanitize with valid arguments. """
+        self.assertTrue(harmonization.IPAddress.sanitize(' 192.0.2.1\r\n'))
         self.assertTrue(harmonization.IPAddress.is_valid(' 192.0.2.1\r\n',
                                                          sanitize=True))
         self.assertTrue(harmonization.IPAddress.is_valid(b'2001:DB8::1',
@@ -185,6 +186,20 @@ class TestHarmonization(unittest.TestCase):
             '2015-08-31T36:16:10+00:00'
         ))
 
+    def test_datetime_from_epoch_millis(self):
+        """ Test DateTime.from_epoch_millis method. """
+        self.assertEqual('2015-08-31T08:16:10+00:00',
+                         harmonization.DateTime.from_epoch_millis(1441008970))
+        self.assertEqual('2015-08-31T08:16:10+00:00',
+                         harmonization.DateTime.from_epoch_millis("1441008970"))
+        self.assertEqual('2015-08-31T07:16:10-01:00',
+                         harmonization.DateTime.from_epoch_millis(144100897000,
+                                                                 'Etc/GMT+1'))
+        self.assertEqual('2015-08-31T04:16:10-04:00',
+                         harmonization.DateTime.from_epoch_millis(1441008970000,
+                                                                     'America/'
+                                                                     'Guyana'))
+
     def test_datetime_from_timestamp(self):
         """ Test DateTime.from_timestamp method. """
         self.assertEqual('2015-08-31T08:16:10+00:00',
@@ -196,6 +211,11 @@ class TestHarmonization(unittest.TestCase):
                          harmonization.DateTime.from_timestamp(1441008970,
                                                                'America/'
                                                                'Guyana'))
+
+    def test_datetime_from_windows_nt(self):
+        """ Test DateTime.from_ldap method. """
+        self.assertEqual('2011-02-01T02:43:11.572760+00:00',
+                         harmonization.DateTime.from_windows_nt(129410017915727600))
 
     def test_datetime_sanitize(self):
         """ Test DateTime.sanitize method. """
@@ -214,7 +234,7 @@ class TestHarmonization(unittest.TestCase):
     def test_fqdn_valid(self):
         """ Test FQDN.is_valid with valid arguments. """
         self.assertTrue(harmonization.FQDN.is_valid('ex-am.ple.example'))
-        self.assertTrue(harmonization.FQDN.is_valid('intelmq.org'))
+        self.assertTrue(harmonization.FQDN.is_valid('example.org'))
         self.assertTrue(harmonization.FQDN.is_valid('sub_sub2.example.net'))
         self.assertTrue(harmonization.FQDN.is_valid('xn--1-0ga.at'))
         self.assertTrue(harmonization.FQDN.is_valid('212.156.101.43.00-ebgp-atakoy1-k.301-fra-'
@@ -227,6 +247,8 @@ class TestHarmonization(unittest.TestCase):
         self.assertFalse(harmonization.FQDN.is_valid('ö1.at'))
         self.assertFalse(harmonization.FQDN.is_valid('n/a'))
         self.assertFalse(harmonization.FQDN.is_valid('.'))
+        self.assertFalse(harmonization.FQDN.is_valid('.example.com'))
+        self.assertFalse(harmonization.FQDN.is_valid('10.0.0.1:8080'))  # 1235
 
     def test_fqdn_sanitize(self):
         """ Test FQDN.sanitize with valid arguments. """
@@ -240,6 +262,15 @@ class TestHarmonization(unittest.TestCase):
         self.assertTrue(harmonization.FQDN.is_valid('212.156.101.43.00-ebgp-atakoy1-k.301-fra-'
                                                     'col-1.statik.turktelekom.com.tr',
                                                     sanitize=True))
+        self.assertTrue(harmonization.FQDN.is_valid('.example.com',
+                                                    sanitize=True))
+
+    def test_fqdn_sanitize_unicodeerror(self):
+        """
+        Check if FQDN.sanitize does not raise a UnicodeError.
+        """
+        data = "{subid_3}&aff_sub4={subid_4}&aff_sub5={subid_5}&DOM=trackingmyli"
+        self.assertIsNone(harmonization.FQDN.sanitize(data))
 
     def test_fqdn_sanitize_invalid(self):
         """Test FQDN.sanitize with invalid arguments. """
@@ -258,11 +289,13 @@ class TestHarmonization(unittest.TestCase):
         """ Test JSON.is_valid with valid arguments. """
         self.assertTrue(harmonization.JSON.is_valid('{"foo": "bar"}',
                                                     sanitize=False))
+        self.assertTrue(harmonization.JSON.is_valid('"foo"',
+                                                    sanitize=False))
 
     def test_json_invalid(self):
         """ Test JSON.is_valid with invalid arguments. """
-        self.assertFalse(harmonization.JSON.is_valid('{}'))
-        self.assertFalse(harmonization.JSON.is_valid('"example"'))
+        self.assertFalse(harmonization.JSON.is_valid('{'))
+        self.assertFalse(harmonization.JSON.is_valid('["foo", ]'))
         self.assertFalse(harmonization.JSON.is_valid(b'{"foo": 1}',
                                                      sanitize=False))
         self.assertFalse(harmonization.JSON.is_valid({"foo": "bar"},
@@ -276,6 +309,29 @@ class TestHarmonization(unittest.TestCase):
                                                     sanitize=True))
         self.assertTrue(harmonization.JSON.is_valid(b'{"foo": "bar"}',
                                                     sanitize=True))
+
+    def test_jsondict_valid(self):
+        """ Test JSONDict.is_valid with valid arguments. """
+        self.assertTrue(harmonization.JSONDict.is_valid('{"foo": "bar"}',
+                                                        sanitize=False))
+
+    def test_jsondict_invalid(self):
+        """ Test JSONDict.is_valid with invalid arguments. """
+        self.assertFalse(harmonization.JSONDict.is_valid('{}'))
+        self.assertFalse(harmonization.JSONDict.is_valid('"example"'))
+        self.assertFalse(harmonization.JSONDict.is_valid(b'{"foo": 1}',
+                                                         sanitize=False))
+        self.assertFalse(harmonization.JSONDict.is_valid({"foo": "bar"},
+                                                         sanitize=False))
+
+    def test_jsondict_sanitize(self):
+        """ Test JSONDict.sanitize with valid arguments. """
+        self.assertTrue(harmonization.JSONDict.is_valid({"foo": "bar"},
+                                                        sanitize=True))
+        self.assertTrue(harmonization.JSONDict.is_valid('{"foo": "bar"}',
+                                                        sanitize=True))
+        self.assertTrue(harmonization.JSONDict.is_valid(b'{"foo": "bar"}',
+                                                        sanitize=True))
 
     def test_lowercasestring_valid(self):
         """ Test LowercaseString.is_valid with valid arguments. """
@@ -328,6 +384,7 @@ class TestHarmonization(unittest.TestCase):
     def test_url_invalid(self):
         """ Test URL.is_valid with invalid arguments. """
         self.assertFalse(harmonization.URL.is_valid('example.com'))
+        self.assertFalse(harmonization.URL.is_valid(' http://example.com'))
         self.assertFalse(harmonization.URL.is_valid('file:///etc/hosts'))
 
     def test_url_sanitize(self):
@@ -338,6 +395,10 @@ class TestHarmonization(unittest.TestCase):
                                                    sanitize=True))
         self.assertTrue(harmonization.URL.is_valid('file:///etc/hosts',
                                                    sanitize=True))
+        self.assertTrue(harmonization.URL.is_valid(' http://example.com',
+                                                   sanitize=True))
+        self.assertEqual(harmonization.URL.sanitize(' http://example.com'),
+                         'http://example.com')
 
     def test_url_sanitize_invalid(self):
         """ Test URL.is_valid with valid arguments. """
@@ -345,6 +406,72 @@ class TestHarmonization(unittest.TestCase):
                                                     sanitize=True))
         self.assertFalse(harmonization.URL.is_valid('http://',
                                                     sanitize=True))
+
+    def test_asn_valid(self):
+        """ Test ASN.is_valid with valid arguments. """
+        self.assertTrue(harmonization.ASN.is_valid(123))
+        self.assertTrue(harmonization.ASN.is_valid(1234567))
+
+    def test_asn_invalid(self):
+        """ Test ASN.is_valid with invalid arguments. """
+        self.assertFalse(harmonization.ASN.is_valid(4294967296))
+        self.assertFalse(harmonization.ASN.is_valid(0))
+        self.assertFalse(harmonization.ASN.is_valid('foo'))
+        self.assertFalse(harmonization.ASN.is_valid('1234'))
+
+    def test_asn_sanitize(self):
+        """ Test ASN.sanitize with valid arguments. """
+        self.assertTrue(harmonization.ASN.is_valid('1234',
+                                                   sanitize=True))
+        self.assertTrue(harmonization.ASN.is_valid('AS1234',
+                                                   sanitize=True))
+
+    def test_asn_sanitize_invalid(self):
+        """ Test ASN.is_valid with invalid arguments. """
+        self.assertFalse(harmonization.ASN.is_valid(0, sanitize=True))
+        self.assertFalse(harmonization.ASN.is_valid('asd', sanitize=True))
+        self.assertFalse(harmonization.ASN.is_valid(-1, sanitize=True))
+        self.assertFalse(harmonization.ASN.is_valid(4294967296, sanitize=True))
+
+    def test_tlp_valid(self):
+        """ Test TLP.is_valid with valid arguments. """
+        self.assertTrue(harmonization.TLP.is_valid('WHITE'))
+
+    def test_tlp_invalid(self):
+        """ Test TLP.is_valid with invalid arguments. """
+        self.assertFalse(harmonization.TLP.is_valid('green'))
+
+    def test_tlp_sanitize(self):
+        """ Test TLP.sanitize with valid arguments. """
+        self.assertTrue(harmonization.TLP.is_valid('TLP:RED',
+                                                   sanitize=True))
+        self.assertTrue(harmonization.TLP.is_valid('red ',
+                                                   sanitize=True))
+
+    def test_tlp_sanitize_invalid(self):
+        """ Test TLP.is_valid with invalid arguments. """
+        self.assertFalse(harmonization.TLP.is_valid('TLP AMBER'))
+
+    def test_classification_type_valid(self):
+        """ Test ClassificationType.is_valid with valid arguments. """
+        self.assertTrue(harmonization.ClassificationType.is_valid('infected-system'))
+
+    def test_classification_type_invalid(self):
+        """ Test ClassificationType.is_valid with invalid arguments. """
+        self.assertFalse(harmonization.ClassificationType.is_valid('foobar'))
+
+    def test_classification_type_sanitize(self):
+        """ Test ClassificationType.sanitize with valid arguments. """
+        self.assertTrue(harmonization.ClassificationType.is_valid('Infected-system',
+                                                   sanitize=True))
+        self.assertTrue(harmonization.ClassificationType.is_valid('infected system ',
+                                                   sanitize=True))
+
+    def test_classification_type_sanitize_invalid(self):
+        """ Test ClassificationType.is_valid with invalid arguments. """
+        self.assertFalse(harmonization.ClassificationType.is_valid('botnet-drone'))
+        self.assertFalse(harmonization.ClassificationType.is_valid('botnet drone'))
+
 
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()

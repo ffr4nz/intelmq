@@ -93,7 +93,7 @@ class Cymru():
 
     @staticmethod
     def __query_parse(text):
-        items = list()
+        items = []
         for item in text.split('|'):
             item = item.replace('"', '')
             item = item.strip()
@@ -115,7 +115,7 @@ class Cymru():
 
         """
 
-        result = dict()
+        result = {}
 
         if not text:
             return result
@@ -128,7 +128,7 @@ class Cymru():
             try:
                 int(asn)
                 result['asn'] = asn
-            except:
+            except ValueError:
                 pass
 
         if items[1]:
@@ -154,7 +154,7 @@ class Cymru():
         Tecnologia e Sociedade (RCTS),PT"
         """
 
-        result = dict()
+        result = {}
 
         if not text:
             return result

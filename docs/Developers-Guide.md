@@ -1,46 +1,58 @@
-**Table of Contents**
-
-* [Intended Audience](#intended-audience)
-  * [Goals](#goals)
-* [Development Environment](#development-environment)
-  * [Installation](#installation)
-  * [Update](#update)
-  * [Testing](#testing)
-* [Development Guidelines](#development-guidelines)
-  * [Coding-Rules](#coding-rules)
-    * [Unicode](#unicode)
-    * [Back-end independence](#back-end-independence)
-    * [Compatibility](#compatibility)
-    * [Documentation](#documentation)
-  * [Layout Rules](#layout-rules)
-    * [Directories Hierarchy on Default Installation](#directories-hierarchy-on-default-installation)
-    * [Directories and Files naming](#directories-and-files-naming)
-    * [Class Names](#class-names)
-  * [Data Harmonization Rules](#data-harmonization-rules)
-  * [Code Submission Rules](#code-submission-rules)
-    * [Releases, Repositories and Branches](#releases-repositories-and-branches)
-    * [How to Contribute](#how-to-contribute)
-    * [Workflow](#workflow)
-    * [Commit Messages](#commit-messages)
-    * [Prepare for Discussion in GitHub](#prepare-for-discussion-in-github)
-  * [License and Author files](#license-and-author-files)
-* [System Overview](#system-overview)
-  * [Code Architecture](#code-architecture)
-  * [Pipeline](#pipeline)
-* [Bot Developer Guide](#bot-developer-guide)
-  * [Template](#template)
-  * [Pipeline interactions](#pipeline-interactions)
-  * [Logging](#logging)
-    * [Log Messages Format](#log-messages-format)
-    * [Log Levels](#log-levels)
-    * [What to Log](#what-to-log)
-    * [How to Log](#how-to-log)
-  * [Error handling](#error-handling)
-  * [Initialization](#initialization)
-  * [Examples](#examples)
-  * [Parsers](#parsers)
-  * [Tests](#tests)
-  * [Configuration](#configuration)
+**Table of Contents:**
+- [Intended Audience](#intended-audience)
+  - [Goals](#goals)
+- [Development Environment](#development-environment)
+  - [Installation](#installation)
+  - [How to develop](#how-to-develop)
+  - [Update](#update)
+  - [Testing](#testing)
+    - [Additional optional requirements](#additional-optional-requirements)
+    - [Run the tests](#run-the-tests)
+    - [Environment variables](#environment-variables)
+    - [Configuration test files](#configuration-test-files)
+- [Development Guidelines](#development-guidelines)
+  - [Coding-Rules](#coding-rules)
+    - [Unicode](#unicode)
+    - [Back-end independence and Compatibility](#back-end-independence-and-compatibility)
+  - [Layout Rules](#layout-rules)
+    - [Documentation](#documentation)
+    - [Directories Hierarchy on Default Installation](#directories-hierarchy-on-default-installation)
+    - [Directories and Files naming](#directories-and-files-naming)
+    - [Class Names](#class-names)
+  - [Data Harmonization Rules](#data-harmonization-rules)
+  - [Code Submission Rules](#code-submission-rules)
+    - [Releases, Repositories and Branches](#releases-repositories-and-branches)
+    - [Branching model](#branching-model)
+    - [How to Contribute](#how-to-contribute)
+    - [Workflow](#workflow)
+    - [Commit Messages](#commit-messages)
+    - [Prepare for Discussion in GitHub](#prepare-for-discussion-in-github)
+  - [License and Author files](#license-and-author-files)
+- [System Overview](#system-overview)
+  - [Code Architecture](#code-architecture)
+  - [Pipeline](#pipeline)
+- [Bot Developer Guide](#bot-developer-guide)
+  - [Template](#template)
+- [imports for additional libraries and intelmq](#imports-for-additional-libraries-and-intelmq)
+  - [Pipeline interactions](#pipeline-interactions)
+  - [Logging](#logging)
+    - [Log Messages Format](#log-messages-format)
+    - [Log Levels](#log-levels)
+    - [What to Log](#what-to-log)
+    - [How to Log](#how-to-log)
+      - [String formatting in Logs](#string-formatting-in-logs)
+  - [Error handling](#error-handling)
+  - [Initialization](#initialization)
+  - [Custom configuration checks](#custom-configuration-checks)
+  - [Examples](#examples)
+  - [Parsers](#parsers)
+    - [parse_line](#parse_line)
+  - [Tests](#tests)
+  - [Configuration](#configuration)
+  - [Cache](#cache)
+- [Feeds documentation](#feeds-documentation)
+- [Testing Pre-releases](#testing-pre-releases)
+  - [Installation](#installation)
 
 # Intended Audience
 This guide is for developers of IntelMQ. It explains the code architecture, coding guidelines as well as ways you can contribute code or documentation.
@@ -48,11 +60,11 @@ If you have not done so, please read the [User Guide](User-Guide.md) first.
 Once you feel comfortable running IntelMQ with open source bots and you feel adventurous enough to contribute to the project, this guide is for you.
 It does not matter if you are an experienced Python programmer or just a beginner. There are a lot of samples to help you out.
 
-Hoever, before we go into the details, it is important to observe and internalise some overall project goals.
+However, before we go into the details, it is important to observe and internalize some overall project goals.
 
 ## Goals
 
-It is important, that all developers agree and stick to these meta-guidelines. 
+It is important, that all developers agree and stick to these meta-guidelines.
 IntelMQ tries to:
 
 * Be well tested. For developers this means, we expect you to write unit tests for bots. Every time.
@@ -76,29 +88,127 @@ Similarly, if code does not get accepted upstream by the main developers, it is 
 # Development Environment
 
 ## Installation
-Developers might want to install intelmq with `pip3 -e`, which gives you a so called *editable* installation. No code is copied in the libraries directories, there's just a link to your code.
 
-    pip3 install -e .
+Developers can create a fork repository of IntelMQ in order to commit the new code to this repository and then be able to do pull requests to the main repository. Otherwise you can just use the 'certtools' as username below.
+
+The following instructions will use `pip3 -e`, which gives you a so called *editable* installation. No code is copied in the libraries directories, there's just a link to your code. However, configuration files still required to be moved to `/opt/intelmq` as the instructions show.
+
+In this guide we use `/opt/dev_intelmq` as local repository copy. You can also use other directories as long as they are readable by other unprivileged users (e.g. home directories on Fedora can't be read by other users by default).
+`/opt/intelmq` is used as root location for IntelMQ installations, this is IntelMQ's default for this installation method. This directory is used for configurations (`/opt/intelmq/etc`), local states (`/opt/intelmq/var/lib`) and logs (`/opt/intelmq/var/log`).
+
+```bash
+sudo -s
+
+git clone https://github.com/<your username>/intelmq.git /opt/dev_intelmq
+cd /opt/dev_intelmq
+
+pip3 install -e .
+
+useradd -d /opt/intelmq -U -s /bin/bash intelmq
+
+mkdir /opt/intelmq
+mkdir -p /opt/intelmq/var/lib/bots/file-output/
+mkdir -p /opt/intelmq/var/log/
+
+cp -R /opt/dev_intelmq/intelmq/etc /opt/intelmq/
+cp -R /opt/dev_intelmq/intelmq/bots/BOTS /opt/intelmq/etc/
+
+chmod -R 0770 /opt/intelmq
+chown -R intelmq.intelmq /opt/intelmq
+```
+
+**Note:** please do not forget that configuration files, log files will be available on `/opt/intelmq`. However, if your development is somehow related to any configuration file, keep using `/opt/intelmq` and then, before commit, change the configurations files on `/opt/dev_intelmq/intelmq/etc/` with your changes on `/opt/intelmq/etc/`.
+
+
+## How to develop
+
+After you successfully setup your IntelMQ development environment, you can perform any development on any `.py` file on `/opt/dev_intelmq`. After you change, you can use the normal procedure to run the bots:
+
+```bash
+su - intelmq
+
+intelmqctl start spamhaus-drop-collector
+
+tail -f /opt/intelmq/var/log/spamhaus-drop-collector.log
+```
+
+You can also add new bots, creating the new `.py` file on the proper directory inside `cd /opt/dev_intelmq/intelmq`. However, your IntelMQ installation with pip3 needs to be updated. Please check the following section.
+
 
 ## Update
 
-If you do any changes on setup.py, data files (e.g. example configurations) or add new bots, you need to rerun the installation routine.
+In case you developed a new bot, you need to update your current development installation. In order to do that, please follow this procedure:
 
-    pip3 install --upgrade -e .
+
+1. Add the new bot information to `/opt/dev_intelmq/intelmq/bots/BOTS`, not `/opt/intelmq/etc/BOTS`.
+2. Make sure that you have your new bot in the right place and the information on BOTS file is correct.
+3. Execute the following commands:
+
+```bash
+sudo -s
+
+cd /opt/dev_intelmq
+pip3 install -e .
+cp /opt/dev_intelmq/intelmq/bots/BOTS /opt/intelmq/etc/BOTS
+
+chmod -R 0770 /opt/intelmq
+chown -R intelmq.intelmq /opt/intelmq
+```
+
+Now you can test run your new bot following this procedure:
+
+```bash
+su - intelmq
+
+intelmqctl start <bot_id>
+```
 
 ## Testing
 
-All changes have to be tested and new contributions must be accompanied by according unit tests. You can run the tests by changing to the directory with intelmq repository and running either `unittest` or `nosetests`:
+### Additional optional requirements
 
-    cd intelmq
+For the documentation tests two additional libraries are required: Cerberus and PyYAML. You can install them with pip:
+
+```bash
+pip3 install Cerberus PyYAML
+```
+
+or the package management of your operating system.
+
+### Run the tests
+
+All changes have to be tested and new contributions should be accompanied by according unit tests. You can run the tests by changing to the directory with IntelMQ repository and running either `unittest` or `nosetests`:
+
+    cd /opt/dev_intelmq
     python3 -m unittest {discover|filename}  # or
-    nosetests3 [filename]  # or
-    python3 setup.py test  # uses a build environment
+    nosetests3 [filename]  # alternatively nosetests or nosetests-3.5 depending on your installation, or
+    python3 setup.py test  # uses a build environment (no external dependencies)
 
-It may be necessary to switch the user to `intelmq` if the run-path (`/opt/intelmq/var/run/`) is not writeable by the current user. Some bots need local databases to succeed. If you don't mind about those and only want to test one explicit test file, give the filepath as argument.
+It may be necessary to switch the user to `intelmq` if the run-path (`/opt/intelmq/var/run/`) is not writeable by the current user. Some bots need local databases to succeed. If you don't mind about those and only want to test one explicit test file, give the file path as argument.
 
 There is a [Travis-CI](https://travis-ci.org/certtools/intelmq/builds) setup for automatic testing, which triggers on pull requests. You can also easily activate it for your forks.
 
+### Environment variables
+
+There are a bunch of environment variables which switch on/off some tests:
+
+* `INTELMQ_TEST_DATABASES`: databases such as postgres, elasticsearch, mongodb are not tested by default, set to 1 to test those bots. These tests need preparation, e.g. running databases with users and certain passwords etc. Have a look at the `.travis.yml` in IntelMQ's repository for steps to set databases up.
+* `INTELMQ_SKIP_INTERNET`: tests requiring internet connection will be skipped if this is set to 1.
+* `INTELMQ_SKIP_REDIS`: redis-related tests are ran by default, set this to 1 to skip those.
+* `INTELMQ_TEST_LOCAL_WEB`: tests which connect to local web servers or proxies are active when set to 1. Running these tests assume a local webserverserving certain files and/or proxy. Example preparation steps can be found in `.travis.yml` again.
+* `INTELMQ_TEST_EXOTIC`: some bots and tests require libraries which may not be available, those are skipped by default. To run them, set this to 1.
+* `INTELMQ_TEST_REDIS_PASSWORD`: Set this value to the password for the local redis database if needed.
+
+For example, to run all tests you can use:
+
+```bash
+INTELMQ_TEST_DATABASES=1 INTELMQ_TEST_LOCAL_WEB=1 INTELMQ_TEST_EXOTIC=1 nosetests3
+```
+
+### Configuration test files
+
+The tests use the configuration files in your working directory, not those installed in `/opt/intelmq/etc/` or `/etc/`.  You can run the tests for a locally changed intelmq without affecting an installation or
+requiring root to run them.
 
 # Development Guidelines
 
@@ -119,16 +229,11 @@ We support Python 3 only.
 ### Unicode
 
 * Each internal object in IntelMQ (Event, Report, etc) that has strings, their strings MUST be in UTF-8 Unicode format.
-* Any data received from external sources MUST be transformed into UTF-8 unicode format before add it to IntelMQ objects.
+* Any data received from external sources MUST be transformed into UTF-8 Unicode format before add it to IntelMQ objects.
 
-### Back-end independence
+### Back-end independence and Compatibility
 
-Any component of the IntelMQ MUST be independent of the message queue technology (Redis, RabbitMQ, etc...), except `lib/pipeline.py`. Intelmq bots MAY only assume to use the class specified in `lib/pipeline.py` and `lib/cache.py` for inter-process or inter-bot communications.
-
-### Compatibility
-
-IntelMQ core (including intelmqctl) MUST be compatible with IntelMQ Manager.
-
+Any component of the IntelMQ MUST be independent of the message queue technology (Redis, RabbitMQ, etc...).
 
 ## Layout Rules
 
@@ -157,7 +262,7 @@ intelmq/
   /conf
     pipeline.conf
     runtime.conf
-    system.conf
+    defaults.conf
 ```
 
 Assuming you want to create a bot for a new 'Abuse.ch' feed. It turns out that here it is necessary to create different parsers for the respective kind of events (e.g. malicious URLs). Therefore, the usual hierarchy ‘intelmq/bots/parser/<FEED>/parser.py’ would not be suitable because it is necessary to have more parsers for each Abuse.ch Feed. The solution is to use the same hierarchy with an additional "description" in the file name, separated by underscore. Also see the section *Directories and Files naming*.
@@ -175,7 +280,7 @@ Example (including the current ones):
 
 Please document your added/modified code.
 
-For docstrings, we are using the [sphinx-napoleon-google-type-annotation](http://www.sphinx-doc.org/en/stable/ext/napoleon.html#type-annotations).
+For doc strings, we are using the [sphinx-napoleon-google-type-annotation](http://www.sphinx-doc.org/en/stable/ext/napoleon.html#type-annotations).
 
 Additionally, Python's type hints/annotations are used, see [PEP 484](https://www.python.org/dev/peps/pep-0484/).
 
@@ -192,18 +297,14 @@ Any directory and file of IntelMQ has to follow the Directories and Files naming
 * be represented with lowercase and in case of the name has multiple words, the spaces between them must be removed or replaced by underscores;
 * be self-explaining what the content contains.
 
-In the bot directories name, the name must correspond to the feed name. If necessary, some words can be added to give context by joining together using underscores.
+In the bot directories name, the name must correspond to the feed provider. If necessary and applicable the feed name can and should be used as postfix for the filename.
 
-Example (without context words):
+Examples:
 ```
-intelmq/bots/parser/dragonresearchgroup
-intelmq/bots/parser/malwaredomainlist
-```
-
-Example (with context words):
-```
-intelmq/bots/parser/cymru_full_bogons
-intelmq/bots/parser/taichung_city_netflow
+intelmq/bots/parser/malwaredomainlist/parser.py
+intelmq/bots/parser/taichung/parser.py
+intelmq/bots/parser/cymru/parser_full_bogons.py
+intelmq/bots/parser/abusech/parser_ransomware.py
 ```
 
 ### Class Names
@@ -224,18 +325,26 @@ Any component of IntelMQ MUST respect the "Data Harmonization Ontology".
 
   * The main repository is in [github.com/certtools/intelmq](https://github.com/certtools/intelmq).
   * There are a couple of forks which might be regularly merged into the main repository. They are independent and can have incompatible changes and can deviate from the upstream repository.
-  * The "master" branch is the current development branch for the next feature release. Releases are tagged as release branch together with release branches for bugfixes and bugfix releases.
-  * We use [semantic versioning](http://semver.org/).
-  * Releases shall receive non-breaking bug fixes. The "master" branch can change and might introduce non-compatible changes.
-  * If you contribute something, please fork the repository and create a separate branch and use this for pull requests, see section below.
+  * We use [semantic versioning](http://semver.org/). A short summary:
+    * a.x are stable releases
+    * a.b.x are bugfix/patch releases
+    * a.x must be compatible to version a.0 (i.e. API/Config-compatibility)
+  * If you contribute something, please fork the repository, create a separate branch and use this for pull requests, see section below.
+
+### Branching model
+
+  * "master" is the stable branch. It hold the latest stable release. Non-developers should only work on this branch. The recommended log level is WARNING. Code is only added by merges from the maintenance branches.
+  * "maintenance/a.b.x" branches accumulate (cherry-picked) patches for a maintenance release (a.b.x). Recommended for experienced users which deploy intelmq themselves. No new features will be added to these branches.
+  * "develop" is the development branch for the next stable release (a.x). New features must go there. Developers may want to work on this branch. This branch also holds all patches from maintenance releases if applicable. The recommended log level is DEBUG.
+  * Separate branches to develop features or bug fixes may be used by any contributor.
 
 ### How to Contribute
 
-  * Make separate pull requests / branches on github for changes. This allows us to discuss things via github.
+  * Make separate pull requests / branches on GitHub for changes. This allows us to discuss things via GitHub.
   * We prefer one  Pull Request per feature or change. If you have a bunch of small fixes, please don't create one RP per fix :)
-  * Only very small and changes (docs, ...) might be commited directly to development branches without Pull Request by the [core-team](https://github.com/orgs/certtools/teams/core).
-  * Keep the balance betweeen atomic commits and keeping the amount of commits per PR small. You can use interactive rebasing to squash multiple small commits into one. (`rebase -i master`)
-  * Make sure your PR is mergeable in the master branch and all tests are successfull.
+  * Only very small and changes (docs, ...) might be committed directly to development branches without Pull Request by the [core-team](https://github.com/orgs/certtools/teams/core).
+  * Keep the balance between atomic commits and keeping the amount of commits per PR small. You can use interactive rebasing to squash multiple small commits into one (`rebase -i [base-branch]`). Only do rebasing if the code you are rebasing is yet not used by others or is already merged - because then others may need to run into conflicts.
+  * Make sure your PR is merge able in the develop branch and all tests are successful.
   * If possible [sign your commits with GPG](https://help.github.com/articles/signing-commits-using-gpg/).
 
 ### Workflow
@@ -246,48 +355,55 @@ We assume here, that origin is your own fork. We first add the upstream reposito
 > git remote add upstream https://github.com/certtools/intelmq.git
 ```
 
-Syncing master:
+Syncing develop:
 
 ```bash
-> git checkout master
-> git pull upstream master
-> git push origin master
-
+> git checkout develop
+> git pull upstream develop
+> git push origin develop
 ```
-Create a separate feature-branch to work on, sync master with upstream. Create working branch from master:
+You can do the same with the branches `master` and `maintenance`.
+
+Create a separate feature-branch to work on, sync develop with upstream. Create working branch from develop:
 ```bash
-> git checkout master
+> git checkout develop
 > git checkout -b bugfix
 # your work
 > git commit
 ```
-
-Gettting upstream's changes:
+Or, for bugfixes create a separate bugfix-branch to work on, sync maintenance with upstream. Create working branch from maintenance:
 ```bash
-> git checkout master
-> git pull upstream master
-> git push origin master
+> git checkout maintenance
+> git checkout -b new-feature
+# your work
+> git commit
+
+Getting upstream's changes for master or any other branch:
+```bash
+> git checkout develop
+> git pull upstream develop
+> git push origin develop
 ```
 There are 2 possibilities to get upstream's commits into your branch. Rebasing and Merging. Using rebasing, your history is rewritten, putting your changes on top of all other commits. You can use this if your changes are not published yet (or only in your fork).
 ```bash
 > git checkout bugfix
-> git rebase master
+> git rebase develop
 ```
-Using the `-i` flag for rebase enables interactive rebasing. You can then remove, reorder and squash commits, rewrite commit messages, beginning with the given branch, e.g. master.
+Using the `-i` flag for rebase enables interactive rebasing. You can then remove, reorder and squash commits, rewrite commit messages, beginning with the given branch, e.g. develop.
 
 Or using merging. This doesn't break the history. It's considered more , but also pollutes the history with merge commits.
 ```bash
 > git checkout bugfix
-> git merge master
+> git merge develop
 ```
 
 Also see the [development workflow of Scipy](https://docs.scipy.org/doc/numpy/dev/gitwash/development_workflow.html) which has more examples.
 
-You can then create a PR with your branch `bugfix` to our upstream repository, using github's webinterface.
+You can then create a PR with your branch `bugfix` to our upstream repository, using GitHub's web interface.
 
 ### Commit Messages
 
-If it fixes an existing issue, please use github syntax, e.g.: `fixes certtools/intelmq#<IssueID>`
+If it fixes an existing issue, please use GitHub syntax, e.g.: `fixes certtools/intelmq#<IssueID>`
 
 ### Prepare for Discussion in GitHub
 
@@ -309,7 +425,7 @@ In the `intelmq/lib/` directory you can find some libraries:
  * Cache: For some expert bots it does make sense to cache external lookup results. Redis is used here.
  * Harmonization: For defined types, checks and sanitation methods are implemented.
  * Message: Defines Events and Reports classes, uses harmonization to check validity of keys and values according to config.
- * Pipeline: Writes messages to message queues. Implemented for productions use is only Redis. A python-only solution is used by testing. A solution using ZMQ is in development.
+ * Pipeline: Writes messages to message queues. Implemented for productions use is only Redis, AMQP is beta.
  * Test: Base class for bot tests with predefined test and assert methods.
  * Utils: Utility functions used by system components.
 
@@ -384,10 +500,10 @@ All other names can be used freely.
 
 ## Pipeline interactions
 
-A can call three methods related to the pipeline:
+We can call three methods related to the pipeline:
 
   - `self.receive_message()`: The pipeline handler pops one message from the internal queue if possible. Otherwise one message from the sources list is popped, and added it to an internal queue. In case of errors in process handling, the message can still be found in the internal queue and is not lost. The bot class unravels the message a creates an instance of the Event or Report class.
-  - `self.send_message(event)`: Processed message is sent to destination queues.
+  - `self.send_message(event, path="_default")`: Processed message is sent to destination queues. It is possible to change the destination queues by optional `path` parameter.
   - `self.acknowledge_message()`: Message formerly received by `receive_message` is removed from the internal queue. This should always be done after processing and after the sending of the new message. In case of errors, this function is not called and the message will stay in the internal queue waiting to be processed again.
 
 ## Logging
@@ -403,13 +519,13 @@ Format:
 
 Rules:
 * the Log message MUST follow the common rules of a sentence, beginning with uppercase and ending with period.
-* the sentence MUST describe the problem or has useful information to give to an unexperienced user a context. Pure stack traces without any further explanation are not helpful.
+* the sentence MUST describe the problem or has useful information to give to an inexperienced user a context. Pure stack traces without any further explanation are not helpful.
 
 When the logger instance is created, the bot id must be given as parameter anyway. The function call defines the log level, see below.
 
 ### Log Levels
 
-* *debug*: Debugging informations includes retrieved and sent messages, detailed status information. Can include sensitive information like passwords and amount can be huge.
+* *debug*: Debugging information includes retrieved and sent messages, detailed status information. Can include sensitive information like passwords and amount can be huge.
 * *info*: Logs include loaded databases, fetched reports or waiting messages.
 * *warning*: Unexpected, but handled behavior.
 * *error*: Errors and Exceptions.
@@ -417,18 +533,27 @@ When the logger instance is created, the bot id must be given as parameter anywa
 
 ### What to Log
 
-* Try to keep a balance between obscuring the source code file with hundreds of log messages and having too little log messages. 
+* Try to keep a balance between obscuring the source code file with hundreds of log messages and having too little log messages.
 * In general, a bot MUST report error conditions.
 
 ### How to Log
 The Bot class creates a logger with that should be used by bots. Other components won't log anyway currently. Examples:
 
 ```python
-self.logger.info('Bot start processing')
-self.logger.error('Pipeline failed')
-self.logger.exception('Pipeline failed')
+self.logger.info('Bot start processing.')
+self.logger.error('Pipeline failed.')
+self.logger.exception('Pipeline failed.')
 ```
 The `exception` method automatically appends an exception traceback. The logger instance writes by default to the file `/opt/intelmq/var/log/[bot-id].log` and to stderr.
+
+#### String formatting in Logs
+
+Parameters for string formatting are better passed as argument to the log function, see https://docs.python.org/3/library/logging.html#logging.Logger.debug
+In case of formatting problems, the error messages will be better. For example:
+
+```python
+self.logger.debug('Connecting to %r.', host)
+```
 
 ## Error handling
 
@@ -451,6 +576,22 @@ class ExampleParserBot(Bot):
             self.stop()
 ```
 
+## Custom configuration checks
+
+Every bot can define a static method `check(parameters)` which will be called by `intelmqctl check`.
+For example the check function of the ASNLookupExpert:
+
+```python
+    @staticmethod
+    def check(parameters):
+        if not os.path.exists(parameters.get('database', '')):
+            return [["error", "File given as parameter 'database' does not exist."]]
+        try:
+            pyasn.pyasn(parameters['database'])
+        except Exception as exc:
+            return [["error", "Error reading database: %r." % exc]]
+```
+
 ## Examples
 
 * Check [Expert Bots](../intelmq/bots/experts/)
@@ -465,7 +606,7 @@ Parsers can use a different, specialized Bot-class. It allows to work on individ
  * `parse_line`: Parses elements, returns an Event. Can be overridden.
  * `recover_line`: In case of failures and for the field `raw`, this function recovers a fully functional report containing only one element. Can be overridden.
 
-For common cases, like CSV, exisiting function can be used, reducing the amount of code to implement. In the best case, only `parse_line` needs to be coded, as only this part interprets the data.
+For common cases, like CSV, existing function can be used, reducing the amount of code to implement. In the best case, only `parse_line` needs to be coded, as only this part interprets the data.
 
 You can have a look at the implementation `intelmq/lib/bot.py` or at examples, e.g. the DummyBot in `intelmq/tests/lib/test_parser_bot.py`. This is a stub for creating a new Parser, showing the parameters and possible code:
 
@@ -480,7 +621,7 @@ class MyParserBot(ParserBot):
         `self.parse_line` can be saved in `self.tempdata` (list).
 
         Default parser yields stripped lines.
-        Override for your use or use an exisiting parser, e.g.:
+        Override for your use or use an existing parser, e.g.:
             parse = ParserBot.parse_csv
         """
         for line in utils.base64_decode(report.get("raw")).splitlines():
@@ -536,7 +677,7 @@ One line can lead to multiple events, thus `parse_line` can't just return one Ev
 
 In order to do automated tests on the bot, it is necessary to write tests including sample data. Have a look at some existing tests:
 
- - The DummyParserBot in `intelmq/tests/lib/test_paerser_bot.py`. This test has the example data (report and event) inside the file, defined as dictionary.
+ - The DummyParserBot in `intelmq/tests/lib/test_parser_bot.py`. This test has the example data (report and event) inside the file, defined as dictionary.
  - The parser for malwaregroup at `intelmq/tests/bots/parsers/malwaregroup/test_parser_*.py`. The latter loads a sample HTML file from the same directory, which is the raw report.
  - The test for ASNLookupExpertBot has two event tests, one is an expected fail (IPv6).
 
@@ -561,7 +702,7 @@ class TestExampleParserBot(test.BotTestCase, unittest.TestCase):  # adjust test 
     @classmethod
     def set_bot(cls):
         cls.bot_reference = ExampleParserBot  # adjust bot class name
-        cls.default_input_message = EXAMPLE_EVENT  # adjust source of the example event (dict), by default an empty event or report (depeding on bot type)
+        cls.default_input_message = EXAMPLE_EVENT  # adjust source of the example event (dict), by default an empty event or report (depending on bot type)
 
     # This is an example how to test the log output
     def test_log_test_line(self):
@@ -582,7 +723,42 @@ if __name__ == '__main__':  # pragma: no cover
 
 When calling the file directly, only the tests in this file for the bot will be expected. Some default tests are always executed (via the `test.BotTestCase` class), such as pipeline and message checks, logging, bot naming or empty message handling.
 
+See the [testing section](#testing) about how to run the tests.
+
 ## Configuration
 
 In the end, the new information about the new bot should be added to BOTS file
 located at `intelmq/bots`. Note that the file is sorted!
+
+## Cache
+
+Bots can use a Redis database as cache instance. Use the `intelmq.lib.utils.Cache` class to set this up and/or look at existing bots, like the `cymru_whois` expert how the cache can be used.
+Bots must set a TTL for all keys that are cached to avoid caches growing endless over time.
+Bots must use the Redis databases `>=` 10, but not those already used by other bots. See `bots/BOTS` what databases are already used.
+
+The databases `<` 10 are reserved for the IntelMQ core:
+ * 2: pipeline
+ * 3: statistics
+ * 4: tests
+
+# Feeds documentation
+
+The feeds which are known to be working with IntelMQ are documented in the machine-readable file `intelmq/etc/feeds.yaml`. The human-readable documentation is in `docs/Feeds.md`. In order to keep these files in sync, call `intelmq/bin/intelmq_gen_docs.py` which generates the Markdown file from the YAML file.
+
+So to add a new feeds, change the `feeds.yaml` and then call the `intelmq_gen_docs.py` file.
+
+# Testing Pre-releases
+
+## Installation
+
+The [installation procedures](Install.md) needs to be adapted only a little bit.
+
+For native packages, you can find the unstable packages of the next version here: [Installation Unstable Native Packages](https://software.opensuse.org/download.html?project=home%3Asebix%3Aintelmq%3Aunstable&package=intelmq).
+
+For the installation with pip, use the `--pre` parameter as shown here following command:
+
+```bash
+pip3 install --pre intelmq
+```
+
+All other steps are not different. Please report any issues you find in our [Issue Tracker](https://github.com/certtools/intelmq/issues/new).

@@ -9,16 +9,16 @@ from intelmq.lib.bot import ParserBot
 class Malc0deParserBot(ParserBot):
 
     WINDOWS_FORMAT = {'http://malc0de.com/bl/BOOT',
-                      'http://malc0de.com/bl/BOOT'}
+                      'https://malc0de.com/bl/BOOT'}
 
     BIND_FORMAT = {'http://malc0de.com/bl/ZONES',
                    'https://malc0de.com/bl/ZONES'}
 
     IP_BLACKLIST = {'http://malc0de.com/bl/IP_Blacklist.txt',
                     'https://malc0de.com/bl/IP_Blacklist.txt'}
+    lastgenerated = None
 
     def parse_line(self, line, report):
-        lastgenerated = None
 
         if line.startswith('//') or len(line) == 0:
             self.tempdata.append(line)
@@ -52,5 +52,6 @@ class Malc0deParserBot(ParserBot):
                 raise ValueError('Unknown data feed %s.' % report['feed.url'])
 
             yield event
+
 
 BOT = Malc0deParserBot

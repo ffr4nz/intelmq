@@ -1,74 +1,98 @@
 # -*- coding: utf-8 -*-
-
+"""
+Uses the common mail iteration method from the lib file.
+"""
+import io
 import re
 
-import requests
+from intelmq.lib.splitreports import generate_reports
 
-from intelmq.lib.bot import CollectorBot
+from .lib import MailCollectorBot
 
 try:
-    import imbox
+    import requests
 except ImportError:
-    imbox = None
+    requests = None
 
 
-class MailURLCollectorBot(CollectorBot):
+class MailURLCollectorBot(MailCollectorBot):
 
     def init(self):
-        if imbox is None:
-            self.logger.error('Could not import imbox. Please install it.')
-            self.stop()
+        super().init()
+        if requests is None:
+            raise ValueError('Could not import requests. Please install it.')
 
         # Build request
         self.set_request_parameters()
 
-    def process(self):
-        mailbox = imbox.Imbox(self.parameters.mail_host,
-                              self.parameters.mail_user,
-                              self.parameters.mail_password,
-                              self.parameters.mail_ssl)
-        emails = mailbox.messages(folder=self.parameters.folder, unread=True)
+        self.chunk_size = getattr(self.parameters, 'chunk_size', None)
+        self.chunk_replicate_header = getattr(self.parameters,
+                                              'chunk_replicate_header', None)
 
-        if emails:
-            for uid, message in emails:
+    def process_message(self, uid, message):
+        erroneous = False  # If errors occurred this will be set to true.
+        seen = False
 
-                if (self.parameters.subject_regex and
-                        not re.search(self.parameters.subject_regex,
-                                      re.sub("\r\n\s", " ", message.subject))):
-                    continue
+        for body in message.body['plain']:
+            match = re.search(self.parameters.url_regex, str(body.decode('utf-8') if isinstance(body, bytes) else body))
+            if match:
+                url = match.group()
+                # strip leading and trailing spaces, newlines and
+                # carriage returns
+                url = url.strip()
 
-                for body in message.body['plain']:
-                    match = re.search(self.parameters.url_regex, str(body))
-                    if match:
-                        url = match.group()
-                        # strip leading and trailing spaces, newlines and
-                        # carriage returns
-                        url = url.strip()
-
-                        self.logger.info("Downloading report from %r." % url)
+                self.logger.info("Downloading report from %r.", url)
+                timeoutretries = 0
+                resp = None
+                while timeoutretries < self.http_timeout_max_tries and resp is None:
+                    try:
                         resp = requests.get(url=url,
                                             auth=self.auth, proxies=self.proxy,
                                             headers=self.http_header,
                                             verify=self.http_verify_cert,
                                             cert=self.ssl_client_cert,
-                                            timeout=self.http_timeout)
+                                            timeout=self.http_timeout_sec)
 
-                        if resp.status_code // 100 != 2:
-                            raise ValueError('HTTP response status code was {}.'
-                                             ''.format(resp.status_code))
+                    except requests.exceptions.Timeout:
+                        timeoutretries += 1
+                        self.logger.warn("Timeout whilst downloading the report.")
 
-                        self.logger.info("Report downloaded.")
+                if resp is None and timeoutretries >= self.http_timeout_max_tries:
+                    self.logger.error("Request timed out %i times in a row. " %
+                                      timeoutretries)
+                    erroneous = True
+                    # The download timed out too often, leave the Loop.
+                    continue
 
-                        report = self.new_report()
-                        report.add("raw", resp.content)
+                if resp.status_code // 100 != 2:
+                    self.logger.error('HTTP response status code was {}.'
+                                      ''.format(resp.status_code))
+                    erroneous = True
+                    continue
+
+                if not resp.content:
+                    self.logger.warning('Got empty reponse from server.')
+                else:
+                    self.logger.info("Report downloaded.")
+
+                    template = self.new_report()
+
+                    for report in generate_reports(template, io.BytesIO(resp.content),
+                                                   self.chunk_size,
+                                                   self.chunk_replicate_header):
                         self.send_message(report)
 
-                        # Only mark read if message relevant to this instance,
-                        # so other instances watching this mailbox will still
-                        # check it.
-                        mailbox.mark_seen(uid)
-                self.logger.info("Email report read.")
-        mailbox.logout()
+                seen = True
+
+        if not erroneous:
+            self.logger.info("Email report read.")
+        else:
+            if self.parameters.error_procedure == 'pass':
+                seen = True
+            else:
+                self.logger.error("Email report read with above errors, the report was not processed.")
+
+        return seen
 
 
 BOT = MailURLCollectorBot

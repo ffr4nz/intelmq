@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Parsers simple newline separated list of domains.
+Parses simple newline separated list of domains.
 
 Docs:
  - https://feodotracker.abuse.ch/blocklist/
@@ -31,7 +31,8 @@ class AbusechDomainParserBot(ParserBot):
         else:
             event = self.new_event(report)
             event.add('time.source', self.lastgenerated)
-            event.add('classification.type', 'c&c')
+            event.add('classification.taxonomy', 'malicious code')
+            event.add('classification.type', 'c2server')
             event.add('source.fqdn', line)
             event.add("raw", line)
             event.add("malware.name", SOURCE_FEEDS[report["feed.url"]])

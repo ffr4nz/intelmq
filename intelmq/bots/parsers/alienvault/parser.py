@@ -3,7 +3,7 @@
 from intelmq.lib.bot import ParserBot
 
 CLASSIFICATION = {
-    "c&c": "c&c",
+    "c2server": "c2server",
     "scanning host": "scanner",
     "malicious host": "malware",
     "spamming": "spam",
@@ -19,7 +19,7 @@ class AlienVaultParserBot(ParserBot):
         values = row.split("#")
 
         # Send one event per classification
-        classification_types = list()
+        classification_types = []
         if values[3].strip().find(";") > 0:
             classification_types.extend(values[3].split(";"))
         else:
